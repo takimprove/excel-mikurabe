@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="先月と今月など、2つのExcel・CSVを見比べて、追加・削除・変更された行を一覧にする無料ツール。ファイルはブラウザの中だけで処理され、どこにも送信されません。">
+<title>Excel見比べ箱</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#f6f5f1;--card:#ffffff;--ink:#1f2328;--muted:#5f6670;--line:#dcd9d0;
+  --accent:#1f6f5c;--accent-ink:#ffffff;--accent-soft:#e3f1ec;
+  --add:#e6f4ea;--add-ink:#1e6b34;--del:#fbe9e7;--del-ink:#a1362a;
+  --chg:#fff3d1;--chg-ink:#7a5000;--same:#f0f0ee;--same-ink:#5f6670;
+  --warn:#fff6e0;--warn-ink:#7a5000;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#16181b;--card:#202327;--ink:#e8e6e1;--muted:#a3a8ae;--line:#363a40;
+    --accent:#4fb39a;--accent-ink:#0f1a17;--accent-soft:#1d3530;
+    --add:#183324;--add-ink:#7fd39a;--del:#3a1f1c;--del-ink:#f2a097;
+    --chg:#3a3016;--chg-ink:#f0cf7a;--same:#26292d;--same-ink:#a3a8ae;
+    --warn:#3a3016;--warn-ink:#f0cf7a;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
+  line-height:1.7;font-size:16px}
+.wrap{max-width:920px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:1.9rem;margin:8px 0 4px;letter-spacing:.02em}
+.lead{margin:0 0 8px}
+.private{display:inline-flex;align-items:center;gap:6px;font-size:.9rem;color:var(--accent);font-weight:600}
+.private::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--accent)}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 18px;margin-top:18px}
+.step{font-size:.8rem;font-weight:700;color:var(--accent);letter-spacing:.1em}
+h2{font-size:1.2rem;margin:2px 0 14px}
+.muted{color:var(--muted);font-size:.92rem}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:640px){.two{grid-template-columns:1fr}}
+.side-title{font-weight:700;margin-bottom:6px}
+.drop{display:block;border:2px dashed var(--line);border-radius:12px;padding:22px 12px;text-align:center;cursor:pointer;
+  background:var(--bg);transition:.15s}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop input{display:none}
+.drop .big{font-weight:700}
+.info{margin-top:8px;min-height:2.4em;font-size:.95rem}
+.fname{font-weight:600;word-break:break-all}
+.err{color:var(--del-ink);font-size:.92rem}
+select,input[type=number]{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);max-width:100%}
+input[type=number]{width:5em}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin-top:12px}
+.note{background:var(--warn);color:var(--warn-ink);border-radius:10px;padding:10px 12px;margin-top:12px;font-size:.92rem}
+.note button{margin-left:6px}
+button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:6px 12px}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700;padding:12px 22px;font-size:1.05rem}
+button:disabled{opacity:.45;cursor:not-allowed}
+.keys{display:grid;grid-template-columns:auto 1fr;gap:10px 12px;align-items:center}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:10px 0}
+@media (max-width:480px){.cards{grid-template-columns:repeat(2,1fr)}}
+.card{border-radius:12px;padding:10px;text-align:center;font-weight:600}
+.card .num{font-size:1.7rem;line-height:1.2}
+.card.add,.chip.add{background:var(--add);color:var(--add-ink)}
+.card.del,.chip.del{background:var(--del);color:var(--del-ink)}
+.card.chg,.chip.chg{background:var(--chg);color:var(--chg-ink)}
+.card.same{background:var(--same);color:var(--same-ink)}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.filters button[aria-pressed=true]{outline:2px solid var(--accent);outline-offset:1px;font-weight:700}
+.tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{background:var(--bg);position:sticky;top:0}
+tr.add td{background:var(--add)}
+tr.del td{background:var(--del);color:var(--del-ink)}
+td.c{background:var(--chg);color:var(--chg-ink);font-weight:600}
+td.c s{opacity:.7;font-weight:400}
+.chip{display:inline-block;border-radius:999px;padding:1px 10px;font-size:.82rem;font-weight:700}
+.chip.same{background:var(--same);color:var(--same-ink)}
+.ok{font-weight:700;color:var(--accent)}
+footer{margin-top:28px;font-size:.85rem;color:var(--muted)}
+footer a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Excel見比べ箱</h1>
+  <p class="lead">先月と今月のExcelやCSVを見比べて、<b>増えた行・消えた行・中身が変わったセル</b>を一覧にします。目で1行ずつ探す作業はもう不要です。</p>
+  <div class="private">ファイルはこのブラウザの中だけで処理され、どこにも送信されません</div>
+
+  <section>
+    <div class="step">STEP 1</div>
+    <h2>見比べたい2つのファイルを入れる</h2>
+    <div class="two">
+      <div>
+        <div class="side-title">前の版（古いほう）</div>
+        <label class="drop" id="drop-old">
+          <input type="file" id="file-old" accept=".xlsx,.xls,.csv">
+          <div class="big">ここにドラッグ</div>
+          <div class="muted">またはタップしてファイルを選ぶ</div>
+        </label>
+        <div class="info" id="info-old"></div>
+      </div>
+      <div>
+        <div class="side-title">新しい版</div>
+        <label class="drop" id="drop-new">
+          <input type="file" id="file-new" accept=".xlsx,.xls,.csv">
+          <div class="big">ここにドラッグ</div>
+          <div class="muted">またはタップしてファイルを選ぶ</div>
+        </label>
+        <div class="info" id="info-new"></div>
+      </div>
+    </div>
+    <div class="row">
+      <label>見出しの行 <input type="number" id="hdr" min="1" value="1"> 行目</label>
+      <span class="muted">.xlsx / .xls / .csv（Shift_JISのCSVも文字化けしません）</span>
+    </div>
+    <div class="note" id="sample-note" hidden>
+      いま表示しているのは<b>動作確認用のサンプル</b>（架空の商品一覧・9月版と10月版）です。
+      <button type="button" id="clear-sample">サンプルを消す</button>
+    </div>
+  </section>
+
+  <section id="step2">
+    <div class="step">STEP 2</div>
+    <h2>行を見分ける列を選ぶ</h2>
+    <p class="muted" style="margin-top:-6px">商品コード・社員番号・顧客IDなど、1行ごとに違う値が入っている列です。自動で候補を選んでいます。</p>
+    <div class="keys">
+      <label for="key1">見分ける列</label><select id="key1"></select>
+      <label for="key2">2つ目（任意）</label><select id="key2"></select>
+    </div>
+    <p class="muted">「店舗」と「商品」の組み合わせで1行が決まる場合は、2つ目も選んでください。</p>
+  </section>
+
+  <section>
+    <div class="step">STEP 3</div>
+    <h2>違いを確かめる</h2>
+    <div id="result"></div>
+  </section>
+
+  <section>
+    <div class="step">STEP 4</div>
+    <h2>結果をExcelで保存する</h2>
+    <button class="primary" id="save" disabled>見比べ結果を保存</button>
+    <p class="muted">保存されるファイルには「概要」「見比べ結果」「変更の詳細」（どの列が何から何に変わったか）「追加」「削除」の5つのシートが入ります。</p>
+  </section>
+
+  <footer>
+    <p>本ツールは無料・無保証です。大切なファイルは元のファイルを残したうえでお使いください。<br>
+    Excelファイルの読み書きには <a href="https://sheetjs.com/" target="_blank" rel="noopener">SheetJS</a>（Apache License 2.0）を使用しています。</p>
+    <p>姉妹ツール：<a href="https://takimprove.github.io/excel-matome/">Excelまとめ箱</a>（複数のExcel・CSVを1つにまとめる）／ TAKimprove</p>
+  </footer>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const state = { old:null, new:null, isSample:false, result:null, filter:'diff' };
+const LABEL = { add:'追加', del:'削除', chg:'変更', same:'同じ' };
+const MAX_ROWS = 300;
+
+// ---------- 読み込み ----------
+function decodeCsv(buf){
+  let text;
+  try { text = new TextDecoder('utf-8', {fatal:true}).decode(buf); }
+  catch(e){ text = new TextDecoder('shift_jis').decode(buf); }
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  return text;
+}
+function readBook(buf, name){
+  if (/\.csv$/i.test(name)) return XLSX.read(decodeCsv(buf), {type:'string', raw:true});
+  return XLSX.read(buf, {type:'array'});
+}
+async function loadFile(side, file){
+  if (!file) return;
+  try {
+    const wb = readBook(await file.arrayBuffer(), file.name);
+    if (state.isSample){ state.isSample = false; state.old = null; state.new = null; }
+    state[side] = { name:file.name, wb, sheet:wb.SheetNames[0] };
+  } catch(e){
+    state[side] = { name:file.name, wb:null, loadError:'このファイルは読み込めませんでした。Excel・CSVファイルか確かめてください。' };
+  }
+  update();
+}
+
+// 値の比較用：前後の空白、全角スペース、数字のカンマの違いは無視する
+function norm(v){
+  let s = String(v ?? '').replace(/\u3000/g,' ').trim();
+  if (/\d/.test(s) && /^[+-]?[\d,]+(\.\d+)?$/.test(s)){
+    const n = Number(s.replace(/,/g,''));
+    if (!isNaN(n)) return String(n);
+  }
+  return s;
+}
+
+function extract(s, hdr){
+  if (!s.wb) return { error:s.loadError };
+  const ws = s.wb.Sheets[s.sheet];
+  if (!ws || !ws['!ref']) return { error:'このシートは空のようです。' };
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  range.s.r = 0; range.s.c = 0;
+  const aoa = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false, range});
+  if (aoa.length < hdr) return { error:`${hdr}行目にデータがありません。見出しの行の番号を確かめてください。` };
+  const seen = {};
+  const headers = aoa[hdr-1].map((h,i) => {
+    let name = String(h).replace(/\u3000/g,' ').trim() || `列${i+1}`;
+    if (seen[name]){ seen[name]++; name = `${name}_${seen[name]}`; } else seen[name] = 1;
+    return name;
+  });
+  const rows = aoa.slice(hdr).filter(r => r.some(v => String(v).trim() !== '')).map(r => {
+    const o = {}; headers.forEach((h,i) => o[h] = r[i] ?? ''); return o;
+  });
+  return { headers, rows, name:s.name, sheet:s.sheet };
+}
+
+// ---------- 見分ける列の候補 ----------
+function guessKey(common, A, B){
+  const re = /コード|ｺｰﾄﾞ|ID|番号|No|品番|社員|会員|顧客|伝票/i;
+  const unique = (rows,h) => { const v = rows.map(r => norm(r[h])); return v.every(x => x !== '') && new Set(v).size === v.length; };
+  let best = common[0], bestScore = -Infinity;
+  common.forEach((h,i) => {
+    const score = (unique(A.rows,h) && unique(B.rows,h) ? 100 : 0) + (re.test(h) ? 50 : 0) - i;
+    if (score > bestScore){ bestScore = score; best = h; }
+  });
+  return best;
+}
+function fillKeys(common, guess){
+  const k1 = $('#key1'), k2 = $('#key2');
+  const p1 = k1.value, p2 = k2.value;
+  const opts = common.map(h => `<option value="${esc(h)}">${esc(h)}</option>`).join('');
+  k1.innerHTML = opts;
+  k2.innerHTML = '<option value="">（なし）</option>' + opts;
+  k1.value = common.includes(p1) ? p1 : guess;
+  k2.value = (common.includes(p2) && p2 !== k1.value) ? p2 : '';
+}
+
+// ---------- 見比べ ----------
+function compare(A, B, keys){
+  const cmpCols = A.headers.filter(h => B.headers.includes(h) && !keys.includes(h));
+  const onlyOld = A.headers.filter(h => !B.headers.includes(h));
+  const onlyNew = B.headers.filter(h => !A.headers.includes(h));
+  let dup = 0, emptyKey = 0;
+  const index = rows => {
+    const list = [], map = new Map(), cnt = new Map();
+    rows.forEach(r => {
+      let k = keys.map(c => norm(r[c])).join(' / ');
+      if (keys.every(c => norm(r[c]) === '')) emptyKey++;
+      const n = (cnt.get(k) || 0) + 1; cnt.set(k, n);
+      if (n > 1){ dup++; k = `${k} #${n}`; }
+      list.push({k, r}); map.set(k, r);
+    });
+    return {list, map};
+  };
+  const O = index(A.rows), N = index(B.rows);
+  const items = [];
+  N.list.forEach(({k, r}) => {
+    const o = O.map.get(k);
+    if (!o) items.push({st:'add', n:r});
+    else {
+      const ch = cmpCols.filter(c => norm(o[c]) !== norm(r[c]));
+      items.push({st: ch.length ? 'chg' : 'same', o, n:r, ch});
+    }
+  });
+  O.list.forEach(({k, r}) => { if (!N.map.has(k)) items.push({st:'del', o:r}); });
+  const cnt = {add:0, del:0, chg:0, same:0};
+  items.forEach(it => cnt[it.st]++);
+  return {A, B, keys, cmpCols, onlyOld, onlyNew, dup, emptyKey, items, cnt};
+}
+
+// ---------- 表示 ----------
+function renderSide(side){
+  const s = state[side], el = $('#info-'+side);
+  if (!s){ el.innerHTML = '<span class="muted">まだファイルがありません</span>'; return; }
+  let h = `<div class="fname">${esc(s.name)}</div>`;
+  if (s.wb && s.wb.SheetNames.length > 1){
+    h += `<label class="muted">シート <select>${s.wb.SheetNames.map(n => `<option value="${esc(n)}"${n === s.sheet ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>`;
+  }
+  if (s.data) h += s.data.error ? `<div class="err">${esc(s.data.error)}</div>` : `<div class="muted">${s.data.rows.length}行・${s.data.headers.length}列</div>`;
+  el.innerHTML = h;
+  const sel = el.querySelector('select');
+  if (sel) sel.addEventListener('change', e => { s.sheet = e.target.value; update(); });
+}
+
+function setEmpty(msg){
+  state.result = null;
+  $('#save').disabled = true;
+  $('#result').innerHTML = `<p class="muted">${msg}</p>`;
+}
+
+function update(){
+  const hdr = Math.max(1, parseInt($('#hdr').value, 10) || 1);
+  ['old','new'].forEach(side => { const s = state[side]; if (s) s.data = extract(s, hdr); renderSide(side); });
+  $('#sample-note').hidden = !state.isSample;
+  const A = state.old && state.old.data, B = state.new && state.new.data;
+  if (!A || !B || A.error || B.error){ $('#key1').innerHTML = ''; $('#key2').innerHTML = ''; return setEmpty('2つのファイルを入れると、ここに結果が出ます。'); }
+  const common = A.headers.filter(h => B.headers.includes(h));
+  if (!common.length) return setEmpty('2つのファイルに同じ名前の列が1つもありません。見出しの行の番号やシートを確かめてください。');
+  fillKeys(common, guessKey(common, A, B));
+  run();
+}
+
+function run(){
+  const A = state.old.data, B = state.new.data;
+  const keys = [...new Set([$('#key1').value, $('#key2').value].filter(Boolean))];
+  state.result = compare(A, B, keys);
+  $('#save').disabled = false;
+  renderResult();
+}
+
+function renderResult(){
+  const R = state.result, c = R.cnt;
+  let h = `<p>前の版 <b>${R.A.rows.length}</b>行 ／ 新しい版 <b>${R.B.rows.length}</b>行</p>`;
+  h += '<div class="cards">' + ['add','del','chg','same'].map(k => `<div class="card ${k}"><div class="num">${c[k]}</div><div>${LABEL[k]}</div></div>`).join('') + '</div>';
+  const warns = [];
+  if (R.dup) warns.push(`「${R.keys.join('＋')}」に同じ値が入った行が${R.dup}行あります。上から順に対応させて比べていますが、2つ目の列も選ぶと正確になります。`);
+  if (R.emptyKey) warns.push(`「${R.keys.join('＋')}」が空の行が${R.emptyKey}行あります。`);
+  if (R.onlyOld.length) warns.push(`前の版だけにある列（比べていません）：${R.onlyOld.join('、')}`);
+  if (R.onlyNew.length) warns.push(`新しい版だけにある列（比べていません）：${R.onlyNew.join('、')}`);
+  warns.forEach(w => h += `<div class="note">${esc(w)}</div>`);
+  if (c.add + c.del + c.chg === 0) h += '<p class="ok">違いは見つかりませんでした。2つのファイルの中身は同じです。</p>';
+
+  const filters = [['diff','違いだけ', c.add+c.del+c.chg],['add','追加',c.add],['del','削除',c.del],['chg','変更',c.chg],['all','すべて',R.items.length]];
+  h += '<div class="filters">' + filters.map(([k,l,n]) => `<button type="button" data-f="${k}" aria-pressed="${state.filter === k}">${l}（${n}）</button>`).join('') + '</div>';
+
+  const f = state.filter;
+  const shown = R.items.filter(it => f === 'all' ? true : f === 'diff' ? it.st !== 'same' : it.st === f);
+  const cols = [...R.keys, ...R.cmpCols];
+  if (!shown.length){
+    h += '<p class="muted">この条件に当てはまる行はありません。</p>';
+  } else {
+    h += '<div class="tablebox"><table><thead><tr><th>状態</th>' + cols.map(x => `<th>${esc(x)}</th>`).join('') + '</tr></thead><tbody>';
+    shown.slice(0, MAX_ROWS).forEach(it => {
+      const row = it.n || it.o;
+      h += `<tr class="${it.st}"><td><span class="chip ${it.st}">${LABEL[it.st]}</span></td>`;
+      cols.forEach(col => {
+        if (it.st === 'chg' && it.ch.includes(col)) h += `<td class="c"><s>${esc(it.o[col])}</s> → ${esc(it.n[col])}</td>`;
+        else h += `<td>${esc(row[col])}</td>`;
+      });
+      h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+    if (shown.length > MAX_ROWS) h += `<p class="muted">画面には先頭の${MAX_ROWS}行だけ表示しています。全${shown.length}行は保存したExcelで確認できます。</p>`;
+  }
+  $('#result').innerHTML = h;
+  $('#result').querySelectorAll('[data-f]').forEach(b => b.addEventListener('click', () => { state.filter = b.dataset.f; renderResult(); }));
+}
+
+// ---------- 保存 ----------
+function out(v){
+  const s = String(v ?? '');
+  const t = s.replace(/,/g,'').trim();
+  if (/^-?(0|[1-9]\d{0,14})(\.\d+)?$/.test(t)) return Number(t);
+  return s;
+}
+function makeSheet(aoa){
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const widths = [];
+  aoa.forEach(r => r.forEach((v,i) => {
+    const len = [...String(v ?? '')].reduce((a,ch) => a + (ch.charCodeAt(0) > 255 ? 2 : 1), 0);
+    widths[i] = Math.max(widths[i] || 6, Math.min(50, len + 2));
+  }));
+  ws['!cols'] = widths.map(w => ({wch:w}));
+  return ws;
+}
+function exportXlsx(){
+  const R = state.result; if (!R) return;
+  const {A, B, keys, cmpCols, cnt} = R;
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, makeSheet([
+    ['項目','内容'],
+    ['前の版', `${A.name}（${A.sheet}）`],
+    ['新しい版', `${B.name}（${B.sheet}）`],
+    ['見分けに使った列', keys.join('、')],
+    ['前の版の行数', A.rows.length],
+    ['新しい版の行数', B.rows.length],
+    ['追加', cnt.add], ['削除', cnt.del], ['変更', cnt.chg], ['同じ', cnt.same],
+    ['前の版だけにある列', R.onlyOld.join('、') || 'なし'],
+    ['新しい版だけにある列', R.onlyNew.join('、') || 'なし'],
+    ['作成日時', new Date().toLocaleString('ja-JP')]
+  ]), '概要');
+
+  const cols = [...keys, ...cmpCols];
+  const main = [['状態', ...keys, '変更された列', ...cmpCols]];
+  R.items.forEach(it => {
+    const row = it.n || it.o;
+    main.push([LABEL[it.st], ...keys.map(k => out(row[k])), it.ch ? it.ch.join('、') : '', ...cmpCols.map(c => out(row[c]))]);
+  });
+  XLSX.utils.book_append_sheet(wb, makeSheet(main), '見比べ結果');
+
+  const detail = [[...keys, '変わった列', '前の値', '新しい値']];
+  R.items.filter(it => it.st === 'chg').forEach(it => it.ch.forEach(c => detail.push([...keys.map(k => out(it.n[k])), c, out(it.o[c]), out(it.n[c])])));
+  XLSX.utils.book_append_sheet(wb, makeSheet(detail), '変更の詳細');
+
+  const added = [B.headers]; R.items.filter(it => it.st === 'add').forEach(it => added.push(B.headers.map(h => out(it.n[h]))));
+  XLSX.utils.book_append_sheet(wb, makeSheet(added), '追加');
+  const deleted = [A.headers]; R.items.filter(it => it.st === 'del').forEach(it => deleted.push(A.headers.map(h => out(it.o[h]))));
+  XLSX.utils.book_append_sheet(wb, makeSheet(deleted), '削除');
+
+  const d = new Date(), p = n => String(n).padStart(2,'0');
+  XLSX.writeFile(wb, `見比べ結果_${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}.xlsx`);
+}
+
+// ---------- サンプル ----------
+function sampleBook(aoa, name){
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), name);
+  return wb;
+}
+function loadSample(){
+  const head = ['商品コード','商品名','単価','在庫','仕入先'];
+  const sep = [head,
+    ['A001','ボールペン 黒',120,340,'文具堂'],
+    ['A002','ボールペン 赤',120,210,'文具堂'],
+    ['A003','ノート A4',180,95,'紙のやまと'],
+    ['A004','クリアファイル',60,500,'文具堂'],
+    ['A005','付箋 75x75',150,130,'紙のやまと'],
+    ['A006','ホッチキス',680,22,'オフィス北陸']];
+  const oct = [head,
+    ['A001','ボールペン 黒',120,340,'文具堂'],
+    ['A002','ボールペン 赤',120,180,'文具堂'],
+    ['A003','ノート A4',198,80,'紙のやまと'],
+    ['A004','クリアファイル',60,500,'文具堂'],
+    ['A005','付箋 75x75',150,130,'紙のやまと'],
+    ['A007','修正テープ',260,60,'文具堂']];
+  state.old = { name:'商品一覧_9月.xlsx', wb:sampleBook(sep,'商品一覧'), sheet:'商品一覧' };
+  state.new = { name:'商品一覧_10月.xlsx', wb:sampleBook(oct,'商品一覧'), sheet:'商品一覧' };
+  state.isSample = true;
+  update();
+}
+
+// ---------- 操作 ----------
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
+['old','new'].forEach(side => {
+  const zone = $('#drop-'+side), input = $('#file-'+side);
+  input.addEventListener('change', () => { loadFile(side, input.files[0]); input.value = ''; });
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('over'));
+  zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('over'); loadFile(side, e.dataTransfer.files[0]); });
+});
+$('#hdr').addEventListener('change', update);
+$('#key1').addEventListener('change', () => { if ($('#key2').value === $('#key1').value) $('#key2').value = ''; run(); });
+$('#key2').addEventListener('change', run);
+$('#save').addEventListener('click', exportXlsx);
+$('#clear-sample').addEventListener('click', () => { state.old = null; state.new = null; state.isSample = false; update(); });
+
+if (typeof XLSX === 'undefined') {
+  $('#result').innerHTML = '<p class="err">部品の読み込みに失敗しました。インターネットにつながっているか確かめて、ページを再読み込みしてください。</p>';
+} else {
+  loadSample();
+}
+</script>
+</body>
+</html>
